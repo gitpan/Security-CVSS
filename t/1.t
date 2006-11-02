@@ -3,7 +3,7 @@
 
 #########################
 
-use Test::More tests => 23;
+use Test::More tests => 31;
 BEGIN { use_ok('Security::CVSS') };
 
 #########################
@@ -40,7 +40,7 @@ ok($CVSS->EnvironmentalScore() == 5.9, 'environmental score of CVE-2002-0392 is 
 
 # Microsoft Windows ASN.1 Library Integer Handling Vulnerability (CVE-2003-0818)
 ok($CVSS = new Security::CVSS({
-                     AccessVector => 'Remote',
+                     AccessVector => 'R',
                      AccessComplexity => 'Low',
                      Authentication => 'Not-Required',
                      ConfidentialityImpact => 'Complete',
@@ -72,3 +72,22 @@ ok($CVSS = new Security::CVSS({
 
 ok($CVSS->BaseScore() == 5.6, 'base score of CVE-2003-0062 is as expected');
 ok($CVSS->TemporalScore() == 4.4, 'temporal score of CVE-2003-0062 is as expected');
+
+# NIST vector examples from http://nvd.nist.gov/cvss.cfm?vectorinfo
+$CVSS = new Security::CVSS;
+
+$CVSS->Vector('(AV:L/AC:H/Au:NR/C:N/I:P/A:C/B:C)');
+ok($CVSS->BaseScore() == 2.4, 'base score of NIST example is as expected');
+is($CVSS->Vector, '(AV:L/AC:H/Au:NR/C:N/I:P/A:C/B:C)', 'output vector is same as input');
+
+$CVSS->Vector('(AV:R/AC:L/Au:R/C:C/I:N/A:P/B:N)');
+ok($CVSS->BaseScore() == 3.4, 'base score of 2nd NIST example is as expected');
+is($CVSS->Vector, '(AV:R/AC:L/Au:R/C:C/I:N/A:P/B:N)', 'output vector is same as input');
+
+$CVSS->Vector('(AV:L/AC:H/Au:NR/C:N/I:P/A:C/B:C/E:U/RL:O/RC:U)');
+ok($CVSS->BaseScore() == 2.4, 'base score of NIST example with temporal values is as expected');
+is($CVSS->Vector, '(AV:L/AC:H/Au:NR/C:N/I:P/A:C/B:C/E:U/RL:O/RC:U)', 'output vector is same as input');
+
+$CVSS->Vector('(AV:R/AC:L/Au:R/C:C/I:N/A:P/B:N/E:P/RL:T/RC:Uc)');
+ok($CVSS->BaseScore() == 3.4, 'base score of 2nd NIST example with temporal values is as expected');
+is($CVSS->Vector, '(AV:R/AC:L/Au:R/C:C/I:N/A:P/B:N/E:P/RL:T/RC:Uc)', 'output vector is same as input');

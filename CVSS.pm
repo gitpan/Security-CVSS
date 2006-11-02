@@ -7,30 +7,52 @@ use warnings;
 use Module::Check_Args;
 use Carp qw( croak );
 
-our $VERSION = '0.01';
+our $VERSION = '0.3';
 
 our %BASE_PARAMS =
             (
-                AccessVector          => {'remote'   => 1,   'local'           => 0.7},
-                AccessComplexity      => {'low'      => 1,   'high'            => 0.8},
-                Authentication        => {'required' => 0.6, 'not-required'    => 1},
-                ConfidentialityImpact => {'none'     => 0,   'partial'         => 0.7, 'complete'  => 1},
-                IntegrityImpact       => {'none'     => 0,   'partial'         => 0.7, 'complete'  => 1},
-                AvailabilityImpact    => {'none'     => 0,   'partial'         => 0.7, 'complete'  => 1},
-                ImpactBias            => {'normal'   => 1,   'confidentiality' => 1,   'integrity' => 1, 'availability' => 1}
+                AccessVector          => {Params => {'remote' => 1,   'local' => 0.7},
+                                          P2V    => {'remote' => 'R', 'local' => 'L'}},
+
+                AccessComplexity      => {Params => {'low' => 1,   'high' => 0.8},
+                                          P2V    => {'low' => 'L', 'high' => 'H'}},
+
+                Authentication        => {Params => {'required' => 0.6, 'not-required'    => 1},
+                                          P2V    => {'required' => 'R', 'not-required' => 'NR'}},
+
+                ConfidentialityImpact => {Params => {'none'     => 0,   'partial' => 0.7, 'complete' => 1},
+                                          P2V    => {'none'     => 'N', 'partial' => 'P', 'complete' => 'C'}},
+
+                IntegrityImpact       => {Params => {'none'     => 0,   'partial' => 0.7, 'complete' => 1},
+                                          P2V    => {'none'     => 'N', 'partial' => 'P', 'complete' => 'C'}},
+
+                AvailabilityImpact    => {Params => {'none'     => 0,   'partial' => 0.7, 'complete' => 1},
+                                          P2V    => {'none'     => 'N', 'partial' => 'P', 'complete' => 'C'}},
+
+                ImpactBias            => {Params => {'normal'   => 1,   'confidentiality' => 1,   'integrity' => 1,   'availability' => 1},
+                                          P2V    => {'normal'   => 'N', 'confidentiality' => 'C', 'integrity' => 'I', 'availability' => 'A'}}
             );
+
+_CreateV2P(\%BASE_PARAMS);
 
 our %TEMPORAL_PARAMS =
             (
-                Exploitability   => {'unproven'     => 0.85, 'proof-of-concept' => 0.9,  'functional' => 0.95, 'high'        => 1 },
-                RemediationLevel => {'official-fix' => 0.87, 'temporary-fix'    => 0.90, 'workaround' => 0.95, 'unavailable' => 1.00 },
-                ReportConfidence => {'unconfirmed'  => 0.9,  'uncorroborated'   => 0.95, 'confirmed'  => 1.00}
+                Exploitability   => {Params => {'unproven' => 0.85, 'proof-of-concept' => 0.9, 'functional' => 0.95, 'high' => 1},
+                                     P2V    => {'unproven' => 'U',  'proof-of-concept' => 'P', 'functional' => 'F',  'high' => 'H'}},
+
+                RemediationLevel => {Params => {'official-fix' => 0.87, 'temporary-fix' => 0.9, 'workaround' => 0.95, 'unavailable' => 1},
+                                     P2V    => {'official-fix' => 'O',  'temporary-fix' => 'T', 'workaround' => 'W',  'unavailable' => 'U'}},
+
+                ReportConfidence => {Params => {'unconfirmed' => 0.9, 'uncorroborated' => 0.95, 'confirmed' => 1},
+                                     P2V    => {'unconfirmed' => 'U', 'uncorroborated' => 'Uc', 'confirmed' => 'C'}}
             );
+
+_CreateV2P(\%TEMPORAL_PARAMS);
 
 our %ENVIRONMENTAL_PARAMS =
             (
-                CollateralDamagePotential => {'none' => 0, 'low' => 0.1,  'medium' => 0.3,  'high' => 0.5},
-                TargetDistribution        => {'none' => 0, 'low' => 0.25, 'medium' => 0.75, 'high' => 1}
+                CollateralDamagePotential => {Params => {'none' => 0, 'low' => 0.1,  'medium' => 0.3,  'high' => 0.5}},
+                TargetDistribution        => {Params => {'none' => 0, 'low' => 0.25, 'medium' => 0.75, 'high' => 1}}
             );
 
 our %ALL_PARAMS = (%BASE_PARAMS, %TEMPORAL_PARAMS, %ENVIRONMENTAL_PARAMS);
@@ -61,6 +83,129 @@ sub new
     return $self;
 }
 
+# Create the Vector-to-Param hash from the P2V hash
+sub _CreateV2P
+{
+    exact_argcount(1);
+    my $Params = shift;
+
+    foreach my $Param (keys %$Params)
+    {
+        $Params->{$Param}->{V2P} = { map { $Params->{$Param}->{P2V}->{$_} => $_ } keys %{$Params->{$Param}->{P2V}} };
+    }
+}
+
+sub _ValidateParam
+{
+    exact_argcount(3);
+    my $self  = shift;
+    my $Param = shift;
+    my $Value = shift;
+
+    # If vector value - convert to full value
+    if (exists($ALL_PARAMS{$Param}->{V2P}->{$Value}))
+    {   $Value = $ALL_PARAMS{$Param}->{V2P}->{$Value}; }
+    else
+    {   $Value = lc($Value); }
+
+    if (!grep(/^$Value$/i, keys %{$ALL_PARAMS{$Param}->{Params}}))
+    {   croak("Invalid value '$Value' for $Param"); }
+
+    $self->{$Param} = $Value;
+}
+
+sub _ConvertToVectorValue
+{
+    my $Value = shift;
+    my @Words = split('-', $Value);
+
+    my $VectorValue;
+    foreach my $Word (@Words)
+    {   $VectorValue .= uc(substr($Word, 0, 1)); }
+}
+
+# Sets up the object from a vector in the format at:
+# http://nvd.nist.gov/cvss.cfm?vectorinfo
+sub Vector
+{
+    range_argcount(1, 2);
+    my ($self, $Vector) = @_;
+
+    if (defined($Vector))
+    {
+        if ($Vector !~ m#^\(AV:([RL])/AC:([HL])/Au:(R|NR)/C:([NPC])/I:([NPC])/A:([NPC])/B:([NCIA])(/E:([UPFH])/RL:([OTWU])/RC:(U|Uc|C))?\)#)
+        {   croak('Invalid CVSS vector'); }
+
+        my %Values =
+            (
+                AccessVector          => $1,
+                AccessComplexity      => $2,
+                Authentication        => $3,
+                ConfidentialityImpact => $4,
+                IntegrityImpact       => $5,
+                AvailabilityImpact    => $6,
+                ImpactBias            => $7
+            );
+
+        if (defined($8))
+        {
+            # Has temporal portion
+            %Values =
+                (
+                    %Values,
+                    Exploitability   => $9,
+                    RemediationLevel => $10,
+                    ReportConfidence => $11
+                );
+        }
+
+        $self->UpdateFromHash(\%Values);
+    }
+    else
+    {
+        # Check all parameters exist
+        foreach my $Param (keys %BASE_PARAMS)
+        {
+            if (!defined($self->{$Param}))
+            {   croak("You must set '$Param' to output the CVSS vector"); }
+        }
+
+        my $VectorValue = sub
+            {
+                return $ALL_PARAMS{$_[0]}->{P2V}->{$self->{$_[0]}};
+            };
+
+        my $Vector = sprintf('AV:%s/AC:%s/Au:%s/C:%s/I:%s/A:%s/B:%s',
+                             &$VectorValue('AccessVector'),
+                             &$VectorValue('AccessComplexity'),
+                             &$VectorValue('Authentication'),
+                             &$VectorValue('ConfidentialityImpact'),
+                             &$VectorValue('IntegrityImpact'),
+                             &$VectorValue('AvailabilityImpact'),
+                             &$VectorValue('ImpactBias'));
+
+        my $Environmental = 1;
+        foreach my $Param (keys %TEMPORAL_PARAMS)
+        {
+            if (!defined($self->{$Param}))
+            {
+                $Environmental = 0;
+                last;
+            }
+        }
+
+        if ($Environmental)
+        {
+            $Vector .= sprintf('/E:%s/RL:%s/RC:%s',
+                               &$VectorValue('Exploitability'),
+                               &$VectorValue('RemediationLevel'),
+                               &$VectorValue('ReportConfidence'));
+        }
+
+        return "($Vector)";
+    }
+}
+
 sub UpdateFromHash
 {
     exact_argcount(2);
@@ -78,19 +223,6 @@ sub UpdateFromHash
     }
 }
 
-sub _ValidateParam
-{
-    exact_argcount(3);
-    my $self  = shift;
-    my $Param = shift;
-    my $Value = lc(shift);
-
-    if (!grep(/^$Value$/i, keys %{$ALL_PARAMS{$Param}}))
-    {   croak("Invalid value '$Value' for $Param"); }
-
-    $self->{$Param} = $Value;
-}
-
 sub BaseScore
 {
     exact_argcount(1);
@@ -106,14 +238,14 @@ sub BaseScore
     my $Score = 10;
     foreach my $Param ('AccessVector', 'AccessComplexity', 'Authentication')
     {
-        $Score *= $BASE_PARAMS{$Param}->{$self->{$Param}};
+        $Score *= $BASE_PARAMS{$Param}->{Params}->{$self->{$Param}};
     }
 
     # Calculate the impact portion of the score taking into account the weighting bias
     my $ImpactScore = 0;
     foreach my $ImpactType ('ConfidentialityImpact', 'IntegrityImpact', 'AvailabilityImpact')
     {
-        my $Value = $BASE_PARAMS{$ImpactType}->{$self->{$ImpactType}};
+        my $Value = $BASE_PARAMS{$ImpactType}->{Params}->{$self->{$ImpactType}};
 
         if ($self->{ImpactBias} . 'impact'  eq lc($ImpactType))
         {   $Value *= 0.5; }
@@ -145,7 +277,7 @@ sub TemporalScore
     my $Score = $self->BaseScore();
 
     foreach my $Param (keys %TEMPORAL_PARAMS)
-    {   $Score *= $TEMPORAL_PARAMS{$Param}->{$self->{$Param}}; }
+    {   $Score *= $TEMPORAL_PARAMS{$Param}->{Params}->{$self->{$Param}}; }
 
     # Round to one sig fig
     return sprintf('%.1f', $Score);
@@ -166,8 +298,8 @@ sub EnvironmentalScore
     my $TemporalScore = $self->TemporalScore;
 
     my $Score = ($TemporalScore + ((10 - $TemporalScore)
-                * $ENVIRONMENTAL_PARAMS{CollateralDamagePotential}->{$self->{CollateralDamagePotential}}))
-                * $ENVIRONMENTAL_PARAMS{TargetDistribution}->{$self->{TargetDistribution}};
+                * $ENVIRONMENTAL_PARAMS{CollateralDamagePotential}->{Params}->{$self->{CollateralDamagePotential}}))
+                * $ENVIRONMENTAL_PARAMS{TargetDistribution}->{Params}->{$self->{TargetDistribution}};
 
     # Round to one sig fig
     return sprintf('%.1f', $Score);
@@ -223,6 +355,10 @@ Security::CVSS - Calculate CVSS values (Common Vulnerability Scoring System)
 
   my $NewBaseScore = $CVSS->BaseScore();
 
+  $CVSS->Vector('(AV:L/AC:H/Au:NR/C:N/I:P/A:C/B:C)');
+  my $BaseScore = $CVSS->BaseScore();
+  my $Vector = $CVSS->Vector();
+
 =head1 DESCRIPTION
 
 CVSS allows you to calculate all three types of score described
@@ -234,6 +370,12 @@ at any time.
 The temporal score depends on the base score, and the environmental
 score depends on the temporal score. Therefore you must remember
 to supply all necessary parameters.
+
+Vector allows you to parse a CVSS vector as described at:
+http://nvd.nist.gov/cvss.cfm?vectorinfo
+
+Called without any parameters it will return the CVSS vector as a
+string.
 
 =head1 POSSIBLE VALUES
 
